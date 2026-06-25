@@ -1,0 +1,19 @@
+# Environments
+.env
+.env.local
+venv/
+env/
+
+# Databases
+*.db
+*.sqlite3
+local.db
+
+# Python Caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend (If in same repo)
+node_modules/
+.next/
