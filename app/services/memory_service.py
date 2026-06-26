@@ -15,13 +15,14 @@ def get_embedding(text: str) -> list[float]:
     embeddings = list(embedding_model.embed([text]))
     return embeddings[0].tolist()
 
-def save_memory(db: Session, user_id: str, content: str, memory_type: str = "general"):
+def save_memory(db: Session, user_id: str, content: str, memory_type: str = "general", importance_score: int = 1):
     vector = get_embedding(content)
     new_memory = SemanticMemory(
         user_id=user_id,
         memory_type=memory_type,
         content=content,
-        embedding=vector
+        embedding=vector,
+        importance_score=importance_score
     )
     db.add(new_memory)
     db.commit()

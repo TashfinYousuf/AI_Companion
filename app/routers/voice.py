@@ -25,7 +25,14 @@ async def process_tts(payload: TTSRequest):
         # বাংলা থাকলে 'নবনীতা', ইংরেজি থাকলে 'আরিয়া' (High Quality Human-like Voices)
         voice_model = "bn-BD-NabanitaNeural" if contains_bengali(payload.text) else "en-US-AriaNeural"
         
-        communicate = edge_tts.Communicate(payload.text, voice_model)
+        # --- THE HUMAN TWEAK ---
+        # স্পিড ১০% কমিয়ে দিলে এবং পিচ সামান্য চেঞ্জ করলে ভয়েস অনেক বেশি ন্যাচারাল ও কেয়ারিং শোনায়
+        communicate = edge_tts.Communicate(
+            text=payload.text, 
+            voice=voice_model,
+            rate="-10%",  # ন্যাচারাল কথা বলার রিদম
+            pitch="-5Hz"  # রোবোটিক তীক্ষ্ণতা কমানোর জন্য
+        )
         await communicate.save(path)
         
         return FileResponse(
