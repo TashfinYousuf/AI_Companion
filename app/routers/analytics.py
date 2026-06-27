@@ -5,6 +5,7 @@ from app.database.session import get_db
 from app.database.models import EmotionLog
 from app.database.models import SemanticMemory
 from app.database.models import Goal, SubTask
+from app.services.dream_service import process_nightly_dreams
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
@@ -104,3 +105,14 @@ async def get_user_goals(user_id: str, db: Session = Depends(get_db)):
         return response_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+@router.post("/trigger-dream/{user_id}")
+async def trigger_dream(user_id: str, db: Session = Depends(get_db)):
+    """
+    Manual trigger for Aura's Dream State (Memory Consolidation)
+    """
+    result = process_nightly_dreams(db, user_id)
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["detail"])
+    return result
