@@ -10,3 +10,4 @@ groq
 edge-tts
 websockets
 python-multipart
+fastembed
