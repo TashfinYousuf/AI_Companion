@@ -23,8 +23,7 @@ from typing import Dict
 # ডাটাবেস ও মডেল ইম্পোর্ট
 from app.database.session import get_db
 from app.database.models import SemanticMemory
-from app.database.session import SessionLocal 
-from app.database.models import SemanticMemory
+from app.database.session import SessionLocal
 
 router = APIRouter(prefix="/api/voice", tags=["Voice Engine"])
 
@@ -116,7 +115,7 @@ async def extract_and_save_memory(user_id: str, text: str):
 
 @router.websocket("/ws/live-chat/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    await manager.connect(websocket, user_id)
+    await websocket.accept() # সরাসরি এক্সেপ্ট করবে
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     
     try:
@@ -199,6 +198,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                         user_payload = {"id": user_msg_id, "role": "user", "content": user_text, "timestamp": current_time}
                         db.add(SemanticMemory(user_id=user_id, content=json.dumps(user_payload), memory_type="conversation"))
                         db.commit()
+                        
                     except Exception as e:
                         db.rollback()
                         print(f"⚠️ User Save Error: {e}")
@@ -292,8 +292,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 video_url = "https://cdn.pixabay.com/video/2020/05/25/40143-424844342_tiny.mp4"
                 print(f"🎬 VIDEO TRIGGERED: {video_url}")
 
-            # টেক্সট ক্লিনআপ
-            chat_text = re.sub(r'\[SEND_PIC:.*?\]', '', chat_text, flags=re.IGNORECASE | re.DOTALL).strip()
         
             # ৫. Text & Voice Cleanup
             chat_text = re.sub(r'\[SEND_PIC:.*?\]', '', chat_text, flags=re.IGNORECASE | re.DOTALL).strip()
@@ -304,35 +302,21 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             # এটি অডিও থেকে সব ধরনের ইমোজি মুছে ফেলবে, ফলে TTS রোবটের মতো "Smiling face" পড়বে না
             tts_text_clean = re.sub(r'[^\w\s,.\?!।\'"a-zA-Z0-9\u0980-\u09FF]', '', tts_text).strip()
 
-            # ৫. Voice Generation
+           # ৬. Voice Generation (Dynamic Voice Selector)
             is_voice_note = bool(payload.get("type") == "audio" and random.random() > 0.20) or (random.random() > 0.85)
-            communicate = edge_tts.Communicate(text=tts_text_clean, voice="bn-IN-TanishaaNeural" if lang == "BN" else "en-US-EmmaNeural")
-            audio_data = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio": audio_data += chunk["data"]
-            audio_base64 = base64.b64encode(audio_data).decode("utf-8")
-
-            # Dynamic Voice Selector (Language & Mood based)
-            # ইংরেজির জন্য EmmaNeural খুবই ন্যাচারাল এবং শ্বাস নেওয়ার মতো পজ দেয়
-            voice_model = "en-US-EmmaNeural" if lang == "EN" else "bn-IN-TanishaaNeural"
             
+            voice_model = "en-US-EmmaNeural" if lang == "EN" else "bn-IN-TanishaaNeural"
             rate, pitch = "-15%", "-2Hz" 
 
             if "SEDUCTIVE" in mood or "SAD" in mood:
-                rate = "-20%" # ধীর, ডিপ এবং ফোকাসড
-                pitch = "+0Hz" 
+                rate, pitch = "-20%", "+0Hz" 
             elif "PLAYFUL" in mood:
-                rate = "-5%"
-                pitch = "+5Hz"
-            elif "SAD" in mood:
-                rate = "-15%"
-                pitch = "+0Hz" # ধীর এবং নরম
+                rate, pitch = "-5%", "+5Hz"
             elif "CALM" in mood:
-                rate = "-5%"
-                pitch = "+10Hz"
+                rate, pitch = "-5%", "+10Hz"
                 
             communicate = edge_tts.Communicate(
-                text=tts_text, 
+                text=tts_text_clean, # Clean text passed here
                 voice=voice_model, 
                 rate=rate,    
                 pitch=pitch  
@@ -345,16 +329,13 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             
             audio_base64 = base64.b64encode(audio_data).decode("utf-8")
 
-            # ডাটাবেস সেভ
-            db.add(SemanticMemory(user_id=user_id, content=f"AI: {chat_text}", memory_type="conversation"))
-            db.commit()
-
-            # ☢️ AI Payload & Save
+            # ☢️ AI Payload Creation
             ai_payload = {
                 "id": str(uuid.uuid4()), "type": "reply", "role": "ai", "content": chat_text,
                 "audio_base64": audio_base64, "is_voice_note": is_voice_note, "image_url": image_url, "timestamp": current_time, "video_url": video_url,
             }
 
+            # ☢️ Database Save (The ONLY safe way)
             if not is_incognito:
                 with SessionLocal() as db:
                     try:

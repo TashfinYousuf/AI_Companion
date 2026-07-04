@@ -20,14 +20,9 @@ export interface Message {
     videoUrl?: string; // ভিডিওর জন্য
 }
 
-// 🌍 PRODUCTION & LOCAL DYNAMIC URLS
-  // Vercel-এ লাইভ করলে .env থেকে লাইভ লিংক নেবে, আর পিসিতে চালালে লোকাল আইপি নেবে
-  const currentHost = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
-  
-  // 🌍 SAFE DYNAMIC URLS FOR VERCEL SSR
-  // Vercel-এ থাকলে .env নেবে, নাহলে ব্রাউজারের উইন্ডো থেকে আইপি নেবে
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? `http://${window.location.hostname}:8000/api` : "");
-  const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || (typeof window !== "undefined" ? `ws://${window.location.hostname}:8000/api` : "");
+// 🌍 SAFE DYNAMIC URLS
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? `http://${window.location.hostname}:8000/api` : "http://127.0.0.1:8000/api");
+  const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || (typeof window !== "undefined" ? `ws://${window.location.hostname}:8000/api` : "ws://127.0.0.1:8000/api");
 
 export default function ChatApp() {
 
@@ -61,8 +56,6 @@ export default function ChatApp() {
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-
   // User লাস্ট কীভাবে মেসেজ দিয়েছে তা মনে রাখার জন্য
   const lastInputMode = useRef<'text' | 'voice'>('text');
 
@@ -86,7 +79,7 @@ export default function ChatApp() {
   useEffect(() => {
     const fetchRelationship = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/analytics/relationship/tashfin_01`);
+        const res = await axios.get(`${API_BASE}/api/analytics/relationship/tashfin_01`);
         if (res.data) {
           setRelationship({
             level: res.data.current_level,
@@ -103,7 +96,7 @@ export default function ChatApp() {
     if (messages.length > 1) {
       fetchRelationship();
     }
-  }, [messages.length, API_URL]);
+  }, [messages.length, API_BASE]);
 
 
   // ==========================================
@@ -112,11 +105,29 @@ export default function ChatApp() {
   useEffect(() => {
     // ক) ডাটাবেস থেকে পুরনো চ্যাট হিস্ট্রি আনা
     const user_id = "tashfin_01";
-    fetch(`${API_BASE}/chat/history/${user_id}`)
+    
+    // ☢️ Cache Buster: URL-এর শেষে ডাইনামিক টাইমস্ট্যাম্প যোগ করা হলো
+    const historyUrl = `${API_BASE}/api/chat/history/${user_id}?t=${new Date().getTime()}`;
+    
+    // ☢️ No-Cache Headers: ব্রাউজারকে কড়া নির্দেশ দেওয়া ক্যাশ না করার জন্য
+    fetch(historyUrl, {
+      method: "GET",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+      }
+    })
       .then(res => res.json())
       .then(data => {
-        if (data.status === "success" && data.history) {
+        if (data.status === "success" && data.history && data.history.length > 0) {
           setMessages(data.history);
+        } else {
+          setMessages([{
+            id: "welcome-msg",
+            role: "ai",
+            content: "Hi! I'm Aura. Let's chat!",
+          }]);
         }
       })
       .catch(err => console.error("History fetch error:", err));
@@ -183,7 +194,7 @@ export default function ChatApp() {
 
       socket.onclose = () => {
         console.log("❌ WebSocket Disconnected. Reconnecting in 3 seconds...");
-        setTimeout(connectWebSocket, 3000); // ৩ সেকেন্ড পর আবার এই ফাংশনটাই কল হবে!
+        setTimeout(connectWebSocket, 3000); // ৩ সেকেন্ড পর আবার এই ফাংশনটাই কল হবে
       };
     };
 
@@ -197,7 +208,7 @@ export default function ChatApp() {
         ws.current.close();
       }
     };
-  }, []); // API_URL যদি ইউজ না, ডিপেন্ডেন্সি এম্পটি রাখাই ভালো
+  }, []); // API_BASE যদি ইউজ না, ডিপেন্ডেন্সি এম্পটি রাখাই ভালো
 
   // ==========================================
   // ৭. ইউটিলিটি: ইমেজ টু Base64
@@ -345,7 +356,7 @@ export default function ChatApp() {
   const handleClearHistory = async () => {
     if (!confirm("Are you sure you want to clear all chats? This cannot be undone.")) return;
     try {
-      await axios.delete(`${API_URL}/api/chat/history/tashfin_01`);
+      await axios.delete(`${API_BASE}/api/chat/history/tashfin_01`);
       setMessages([]);
     } catch (err) {
       console.error("Failed to clear history", err);

@@ -1,20 +1,21 @@
+from dotenv import load_dotenv
+# Load environment variables
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import chat, voice, analytics
 from app.database.session import engine, Base
 from app.database import models
-
-from dotenv import load_dotenv
-# Load environment variables
-load_dotenv()
+from app.database.models import SemanticMemory
 
 # Create database tables
 try:
     Base.metadata.create_all(bind=engine)
+    print("✅ Database tables created successfully!")
 except Exception as e:
     print(f"[WARNING] Could not run create_all: {e}")
-    print("[WARNING] App will start but DB operations will fail until connection is restored.")
 
 app = FastAPI(title="Companion OS", version="1.0")
 

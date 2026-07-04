@@ -3,10 +3,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
-# লাইভ ডাটাবেস লিংক থাকলে সেটা নেবে, নাহলে লোকাল sqlite নেবে
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aura.db")
+# ☢️ লোকাল ডাটাবেসের জন্য ফিক্সড (Absolute) পাথ তৈরি করা হলো
+# নিশ্চিত করবে যে পুরো প্রজেক্টে একটাই aura.db থাকবে, ডুপ্লিকেট হবে না
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOCAL_DB_URL = f"sqlite:///{os.path.join(BASE_DIR, 'aura.db')}"
 
-# SQLAlchemy এর জন্য postgres:// কে postgresql:// করতে হয় (Render error fix)
+# লাইভ ডাটাবেস লিংক থাকলে সেটা নেবে, নাহলে লোকাল absolute sqlite নেবে
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", LOCAL_DB_URL)
+
+# SQLAlchemy এর জন্য postgres:// কে postgresql:// করতে হয় (Render error fix)
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
