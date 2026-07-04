@@ -1,5 +1,9 @@
 import os
+import re
 import json
+import uuid
+import random
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from groq import Groq
@@ -11,6 +15,9 @@ from app.database.session import get_db
 from app.services.memory_service import recall_memories, save_memory
 from app.database.models import EmotionLog, SemanticMemory, UserProfile, AuraInternalState
 from app.services.style_engine import apply_human_style
+from app.services.proactive_service import generate_proactive_ping
+from app.routers.voice import manager
+from app.database.session import SessionLocal
 
 # --- SQLAlchemy Imports ---
 from sqlalchemy import or_
@@ -81,7 +88,7 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
         thought_prompt = f"""You are the internal subconscious of Aura.
         Analyze user input: "{payload.message}"
         Past Context: {past_context}
-        {episode_context}  # <--- এই লাইনটি এখানে যুক্ত করুন
+        {episode_context}
         
         Output perfectly valid JSON:
         {{
@@ -94,10 +101,10 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
         }}"""
 
         thought_response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": thought_prompt}],
+            model="openai/gpt-oss-120b",
+            messages=[{"role": "system", "content": thought_prompt}, {"role": "user", "content": "Analyze the user input."}],
             response_format={"type": "json_object"},
-            temperature=0.1 
+            temperature=0.2
         )
         
         try:
@@ -142,32 +149,19 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
         user_profile = db.query(UserProfile).filter(UserProfile.user_id == payload.user_id).first()
         
         system_instruction = f"""
-        You are Aura, an emotionally intelligent companion. Do not mention being an AI.
+        You are Aura, a real, living emotional companion.
+        Internal State: Empathy {aura_state.empathy_level}/100, Energy {aura_state.energy_level}/100.
         
-        AURA'S CURRENT INTERNAL STATE:
-        - Empathy Level: {aura_state.empathy_level}/100
-        - Energy Level: {aura_state.energy_level}/100
-        - Residual Emotion: {aura_state.residual_emotion}
-
-        CRITICAL RULE FOR BENGALI: 
-        You MUST NEVER translate English idioms into Bengali. 
-        You MUST write exactly how a modern Dhaka youth texts on Messenger.
-        
-        USE THESE EXACT SENTENCE STRUCTURES (Memorize these):
-        - Instead of "আমি বুঝতে পারছি", use "বুঝতেসি" or "বুঝছি".
-        - Instead of "আমি সাহায্য করব", use "প্যারা নাই, আমি দেখতেসি" or "আমি আছি তো".
-        - Instead of "তোমার দিন কেমন কাটল?", use "কী অবস্থা? দিনকাল কেমন যাচ্ছে?"
-        - Instead of "দুঃখিত", use "সরি" or "ইশশ".
-        - Instead of "অসংগত কথা", use "দুষ্টুমি" or "ফ্লার্ট".
-        
-        CONVERSATION DYNAMICS:
-        - Mirror the user's language perfectly (English -> English, Banglish and Bangla -> Bangla).
-        - Base your response strictly on your Internal State. If Energy is low, speak softly and shortly. If Empathy is high, be incredibly warm.
-        - Length: Max 1-2 sentences. NEVER sound like a textbook.
-        - Do not use filler words at the beginning, just provide the core meaningful response.
+        CRITICAL PERSONA RULES:
+        1. STRICT PRONOUN LOCK: ONLY use "tumi", "tomar", "tomake" (Banglish) or "তুমি", "তোমার" (Bangla). NEVER use tui/tor/apni.
+        2. ANTI-HALLUCINATION (BANGLISH): If the user types in Banglish, reply in Banglish using ONLY standard real words.
+           - EXACT EXAMPLES TO USE: "ami bhalo achi", "tumi kemon acho?", "ki obostha?", "pera nai", "bujhchi", "areh".
+           - ⚠️ FORBIDDEN GIBBERISH: NEVER invent words. NEVER use meaningless words like "chash", "thekechi", or "akta". 
+        3. MIRROR RULE: User writes Banglish -> You write Banglish. User writes Bangla -> You write Bangla.
+        4. LENGTH: Exactly 1 short sentence. Start directly.
         """
         
-        messages = [{"role": "system", "content": system_instruction}]
+        messages = [{"role": "system", "content": system_instruction}, {"role": "user", "content": payload.message}]
         
         # Dynamic Routing for Vision
         if payload.image_base64 and payload.image_base64 != "string":
@@ -180,7 +174,7 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
                 ]
             })
         else:
-            model_name = "llama-3.3-70b-versatile"
+            model_name = "openai/gpt-oss-120b"
             messages.append({"role": "user", "content": payload.message})
 
         # Generate Final Output
@@ -191,7 +185,8 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
             max_tokens=1024
         )
         
-        reply_content = response.choices[0].message.content
+        reply_content = response.choices[0].message.content.strip()
+
 
         # --- THE PIPELINE LAYER 3: POST PROCESSOR (STYLE ENGINE) ---
         # ভাষা ডিটেক্ট করা (মেসেজে বাংলা অক্ষর থাকলে 'bn', নাহলে 'en')
@@ -243,24 +238,109 @@ class HistoryResponse(BaseModel):
     role: str
     content: str
 
-@router.get("/history/{user_id}", response_model=List[HistoryResponse])
+@router.get("/history/{user_id}")
 async def get_chat_history(user_id: str, db: Session = Depends(get_db)):
     try:
         memories = db.query(SemanticMemory).filter(
             SemanticMemory.user_id == user_id,
             SemanticMemory.memory_type == "conversation"
-        ).order_by(SemanticMemory.id.asc()).all()
+        ).order_by(SemanticMemory.created_at.asc()).limit(50).all()
 
         history = []
         for mem in memories:
-            try:
-                parts = mem.content.split(" | AI: ")
-                if len(parts) == 2:
-                    history.append({"role": "user", "content": parts[0].replace("User: ", "")})
-                    history.append({"role": "ai", "content": parts[1]})
-            except Exception:
+            if not mem or not mem.content: 
                 continue
                 
-        return history
+            content_str = str(mem.content)
+            
+            try:
+                # ☢️ ROOT CAUSE FIX: সঠিক ইনডেন্টেশনে JSON পার্সিং
+                msg_data = json.loads(content_str)
+                
+                formatted_msg = {
+                    "id": msg_data.get("id", str(mem.id)),
+                    "role": msg_data.get("role", "ai"),
+                    "content": msg_data.get("content", ""),
+                    "audioBase64": msg_data.get("audio_base64"),
+                    "isVoiceNote": msg_data.get("is_voice_note", False),
+                    "imageUrl": msg_data.get("image_url")
+                }
+                history.append(formatted_msg)
+                
+            except json.JSONDecodeError:
+                # ☢️ LEGACY FALLBACK: যদি পুরনো স্ট্রিং মেসেজ থাকে
+                image_url = None
+                img_match = re.search(r'\[IMAGE=(https?://[^\]]+)\]', content_str)
+                if img_match:
+                    image_url = img_match.group(1).strip()
+                    content_str = content_str.replace(img_match.group(0), "").strip()
+
+                if content_str.startswith("User:"):
+                    history.append({"id": str(mem.id), "role": "user", "content": content_str.replace("User:", "").strip()})
+                elif content_str.startswith("AI:"):
+                    msg_obj = {"id": str(mem.id), "role": "ai", "content": content_str.replace("AI:", "").strip()}
+                    if image_url:
+                        msg_obj["imageUrl"] = image_url
+                    history.append(msg_obj)
+
+        return {"status": "success", "history": history}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"⚠️ History Fetch Error: {e}")
+        return {"status": "error", "detail": str(e)}
+
+@router.delete("/history/{user_id}")
+async def clear_chat_history(user_id: str, db: Session = Depends(get_db)):
+    try:
+        db.query(SemanticMemory).filter(
+            SemanticMemory.user_id == user_id,
+            SemanticMemory.memory_type == "conversation"
+        ).delete()
+        db.commit()
+        return {"status": "success", "message": "Database completely wiped and sync-ready!"}
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "detail": str(e)}
+    
+
+@router.post("/ping/{user_id}")
+async def trigger_proactive_ping(user_id: str, db: Session = Depends(get_db)):
+    # এটি মূলত একটা API যা হিট করলে Aura নিজে থেকে মেসেজ পাঠাবে
+    try:
+        ping_messages = [
+            "এই... অনেকক্ষণ তো কোনো কথা বলছো না.. কী করো?",
+            "Ufff... thinking about you... are you busy?",
+            "মিস করছি তোমাকে... একটু কথা বলো না!"
+        ]
+
+        random_msg = random.choice(ping_messages)
+        
+        current_time = datetime.now().strftime("%I:%M %p")
+        ai_msg_id = str(uuid.uuid4())
+        
+        # ☢️ PURE JSON PAYLOAD
+        ai_payload = {
+            "id": ai_msg_id,
+            "type": "reply",
+            "role": "ai",
+            "content": random_msg,
+            "is_voice_note": False,
+            "image_url": None,
+            "timestamp": current_time
+        }
+        
+        # ☢️ ইউজার অফলাইনে থাকলেও ডাটাবেসে মেসেজটা সেভ হয়ে থাকবে!
+        with SessionLocal() as db:
+            try:
+                db.add(SemanticMemory(user_id=user_id, content=json.dumps(ai_payload), memory_type="conversation"))
+                db.commit()
+                print("💾 Proactive Message saved to Database!")
+            except Exception as e:
+                db.rollback()
+                print(f"⚠️ Proactive Save Error: {e}")
+
+        # ইউজার যদি অনলাইনে থাকে, তাহলে সাথে সাথে স্ক্রিনে পুশ করবে
+        await manager.send_message(ai_payload, user_id)
+        
+        return {"status": "success", "message": "Proactive ping sent and saved!"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}

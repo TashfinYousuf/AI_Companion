@@ -41,8 +41,8 @@ def process_nightly_dreams(db: Session, user_id: str):
         }}"""
 
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": dream_prompt}],
+            model="openai/gpt-oss-120b",
+            messages=[{"role": "system", "content": dream_prompt}, {"role": "user", "content": "Analyze the chats and generate the episode memory."}],
             response_format={"type": "json_object"},
             temperature=0.3
         )

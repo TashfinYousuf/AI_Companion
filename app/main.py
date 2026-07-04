@@ -29,7 +29,7 @@ app.add_middleware(
 
 # Include the chat routing logic
 app.include_router(chat.router)
-app.include_router(voice.router)
+app.include_router(voice.router, tags=["Voice"])
 app.include_router(analytics.router)
 
 @app.get("/")

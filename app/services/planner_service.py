@@ -21,8 +21,8 @@ def generate_goal_tree(user_id: str, goal_title: str):
         }}"""
 
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": system_prompt}],
+            model="openai/gpt-oss-120b",
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Create goal tree for: {goal_title}"}],
             response_format={"type": "json_object"},
             temperature=0.2
         )
