@@ -21,8 +21,8 @@ export interface Message {
 }
 
 // 🌍 SAFE DYNAMIC URLS
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? `http://${window.location.hostname}:8000/api` : "http://127.0.0.1:8000/api");
-  const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || (typeof window !== "undefined" ? `ws://${window.location.hostname}:8000/api` : "ws://127.0.0.1:8000/api");
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000");
+  const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || (typeof window !== "undefined" ? `ws://${window.location.hostname}:8000` : "ws://127.0.0.1:8000");
 
 export default function ChatApp() {
 
@@ -141,7 +141,7 @@ export default function ChatApp() {
       // ☢️ PRO-TRICK: ব্রাউজার যে IP তে চলবে, ওয়েবসকেট অটোমেটিক সেই IP ধরে নেবে
       const currentHost = window.location.hostname;
       
-      const socket = new WebSocket(`${WS_BASE}/voice/ws/live-chat/${user_id}`);
+      const socket = new WebSocket(`${WS_BASE}/api/voice/ws/live-chat/${user_id}`);
       ws.current = socket;
 
     const playSweetBeep = () => {

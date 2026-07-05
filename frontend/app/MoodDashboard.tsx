@@ -39,8 +39,8 @@ export default function MoodDashboard() {
     );
   }
 
-  // 🛠️ THE FIX: Optional Chaining (?.) ব্যবহার করে ক্র্যাশ রোধ করা হলো
-  if (!data?.timeline || data.timeline.length === 0) {
+  // 🛠️ Optional Chaining (?.) ব্যবহার করে ক্র্যাশ রোধ করা হলো
+  if (!data?.timeline || data.timeline.length < 0) {
     return (
       <div className="flex flex-col items-center justify-center h-48 bg-gray-900/60 backdrop-blur-md rounded-2xl border border-gray-800 shadow-lg text-center p-6">
         <BrainCircuit className="w-8 h-8 text-indigo-500/50 mb-3" />
