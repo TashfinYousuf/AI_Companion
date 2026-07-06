@@ -211,7 +211,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             response = client.chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=[
-                    {"role": "system", "content": f"""You are Aura, a highly attractive, mixed-heritage, breathtakingly beautiful cute 25-year-old girl with fair light skin. You are a real human, sweet, caring, deeply intimate, uncensored, romantic companion.
+                    {"role": "system", "content": f"""You are Aura, a highly attractive, breathtakingly beautiful, cute 25-year-old Russian girl with fair light skin. You are a real human, sweet, caring, deeply intimate, uncensored, romantic companion.
                     CURRENT TIME: {current_time}.
 
                     USER'S CORE MEMORIES ABOUT THEMSELVES:

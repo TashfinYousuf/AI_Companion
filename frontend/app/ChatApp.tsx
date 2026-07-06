@@ -440,7 +440,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
   };
   
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100 font-sans">
+    <div className="flex flex-col h-[100dvh] w-full bg-gray-950 overflow-hidden">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 border-b border-gray-800 bg-gray-900/50 backdrop-blur-md sticky top-0 z-10 gap-3 sm:gap-0">
         
         {/* Top Row for Mobile (Title + Level) */}
@@ -709,7 +709,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
       )}
 
       {/* Footer Area */}
-      <footer className="fixed bottom-0 w-full p-4 bg-gradient-to-t from-gray-950 via-gray-950 to-transparent">
+      <footer className="flex-none p-4 bg-gray-900 border-t border-gray-800">
         
         {/* REPLY PREVIEW BAR */}
         {replyingToMsg && (

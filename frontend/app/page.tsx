@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { auth, googleProvider, facebookProvider } from "./firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signInWithPopup, User } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signInWithPopup, sendPasswordResetEmail, User } from "firebase/auth";
 
 const ChatApp = dynamic(() => import("./ChatApp"), { ssr: false });
 
@@ -18,6 +18,7 @@ export default function Page({ currentUser }: { currentUser: User }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [resetMsg, setResetMsg] = useState("");
 
   // ১. Next.js Hydration Warning Fix (Mounting Check)
   useEffect(() => {
@@ -55,6 +56,22 @@ export default function Page({ currentUser }: { currentUser: User }) {
       await signInWithPopup(auth, provider);
     } catch (err: any) {
       setError(err.message.replace("Firebase: ", ""));
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!email) {
+      setError("Please enter your email address in the box first.");
+      setResetMsg("");
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetMsg("Password reset link sent to your email!");
+      setError("");
+    } catch (err: any) {
+      setError(err.message.replace("Firebase: ", ""));
+      setResetMsg("");
     }
   };
 
@@ -107,6 +124,20 @@ export default function Page({ currentUser }: { currentUser: User }) {
               placeholder="••••••••"
               required
             />
+
+            {/* পাসওয়ার্ড ফিল্ডের নিচে এটা বসবে */}
+            <div className="flex justify-end mt-1">
+              <button 
+                type="button" 
+                onClick={handleResetPassword} 
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                Forgot Password?
+              </button>
+            </div>
+            
+            {/* সাকসেস মেসেজ দেখানোর জন্য */}
+            {resetMsg && <p className="text-green-400 text-xs text-center bg-green-900/20 p-2 rounded mt-2">{resetMsg}</p>}
           </div>
 
           {error && <p className="text-red-400 text-xs text-center bg-red-900/20 p-2 rounded">{error}</p>}
