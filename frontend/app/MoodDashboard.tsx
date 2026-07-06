@@ -7,18 +7,19 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, Radar 
 } from "recharts";
 import { Loader2, BrainCircuit, Activity, HeartPulse } from "lucide-react";
+import { User } from "firebase/auth/web-extension";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-export default function MoodDashboard() {
+export default function MoodDashboard({ currentUser }: { currentUser: User }) {
   const [data, setData] = useState<any>({ timeline: [], radar: [] });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/analytics/mood/tashfin_01`);
-        // API যদি ভুল ডেটা দেয়, সেটা যেন স্টেটে না বসে তাই এই চেকটি করা হলো
+        const res = await axios.get(`${API_URL}/api/analytics/mood/${currentUser.uid}`);
+        // API যদি ভুল ডেটা দেয়, সেটা যেন স্টেটে না বসে তাই এই চেকটি করা হলো
         if (res.data && res.data.timeline) {
           setData(res.data);
         }

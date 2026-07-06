@@ -5,6 +5,9 @@ import { Mic, Send, Square, Loader2, ImagePlus } from "lucide-react";
 import { useReactMediaRecorder } from "react-media-recorder";
 import MoodDashboard from './MoodDashboard';
 import GoalTracker from './GoalTracker';
+import { signOut } from "firebase/auth";
+import { auth } from "./firebase";
+import { User } from "firebase/auth";
 
 // ১. টাইপস্ক্রিপ্ট ইন্টারফেস (যাতে Message টাইপ নিয়ে কোনো এরর না আসে)
 export interface Message {
@@ -24,7 +27,7 @@ export interface Message {
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000");
   const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || (typeof window !== "undefined" ? `ws://${window.location.hostname}:8000` : "ws://127.0.0.1:8000");
 
-export default function ChatApp() {
+export default function ChatApp({ currentUser }: { currentUser: User }) {
 
   // ==========================================
   // ২. কোর স্টেটস (Core States)
@@ -79,7 +82,7 @@ export default function ChatApp() {
   useEffect(() => {
     const fetchRelationship = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/analytics/relationship/tashfin_01`);
+        const res = await axios.get(`${API_BASE}/api/analytics/relationship/${currentUser.uid}`);
         if (res.data) {
           setRelationship({
             level: res.data.current_level,
@@ -98,18 +101,37 @@ export default function ChatApp() {
     }
   }, [messages.length, API_BASE]);
 
+  // ☁️ SYNC: Fetch history across devices from OWN BACKEND
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const fetchCloudChats = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/api/chat/history/${currentUser.uid}`);
+        if (res.data && res.data.length > 0) {
+          setMessages(res.data);
+        }
+      } catch (error) {
+        console.error("Error loading chats:", error);
+      }
+    };
+
+    fetchCloudChats();
+  }, [currentUser]);
+
 
   // ==========================================
-  // ৬. কোর ইঞ্জিন (WebSocket & History)
+  // ৬. কোর ইঞ্জিন (Permanent History Sync)
   // ==========================================
   useEffect(() => {
-    // ক) ডাটাবেস থেকে পুরনো চ্যাট হিস্ট্রি আনা
-    const user_id = "tashfin_01";
+    if (!currentUser) return; // ☢️ ইউজার লগিন না থাকলে লোড করবে না
+
+    // ✅ এখানে আর ডাবল কোটেশন ("") হবে না, সরাসরি ভ্যারিয়েবল
+    const user_id = currentUser.uid; 
     
-    // ☢️ Cache Buster: URL-এর শেষে ডাইনামিক টাইমস্ট্যাম্প যোগ করা হলো
+    // ☢️ Cache Buster + History Endpoint
     const historyUrl = `${API_BASE}/api/chat/history/${user_id}?t=${new Date().getTime()}`;
     
-    // ☢️ No-Cache Headers: ব্রাউজারকে কড়া নির্দেশ দেওয়া ক্যাশ না করার জন্য
     fetch(historyUrl, {
       method: "GET",
       headers: {
@@ -120,7 +142,10 @@ export default function ChatApp() {
     })
       .then(res => res.json())
       .then(data => {
-        if (data.status === "success" && data.history && data.history.length > 0) {
+        // আমাদের নতুন API ডিরেক্ট Array রিটার্ন করে
+        if (Array.isArray(data) && data.length > 0) {
+          setMessages(data);
+        } else if (data.status === "success" && data.history && data.history.length > 0) {
           setMessages(data.history);
         } else {
           setMessages([{
@@ -174,6 +199,18 @@ export default function ChatApp() {
             }]);
             setIsLoading(false);
 
+            // 💾 Save AI Message to Permanent DB
+            fetch(`${API_BASE}/api/chat/save`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                user_id: currentUser.uid,
+                role: "ai",
+                content: data.content,
+                image_url: null
+              })
+            });
+
             // মেসেজ আসার সাথে সাথে বিপ সাউন্ড প্লে হবে
             if (typeof playSweetBeep === "function") {
               playSweetBeep(); 
@@ -208,7 +245,7 @@ export default function ChatApp() {
         ws.current.close();
       }
     };
-  }, []); // API_BASE যদি ইউজ না, ডিপেন্ডেন্সি এম্পটি রাখাই ভালো
+  }, [currentUser]); // currentUser চেঞ্জ হলে আবার লোড হবে
 
   // ==========================================
   // ৭. ইউটিলিটি: ইমেজ টু Base64
@@ -266,6 +303,22 @@ export default function ChatApp() {
     setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content: userMsg }]);
     setReplyingToMsg(null); // রিপ্লাই সেন্ড হলে ক্লিয়ার করে দেওয়া
     setIsLoading(true);
+
+    // 💾 Save User Message to Permanent DB (NEW)
+    try {
+      await fetch(`${API_BASE}/api/chat/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUser.uid,
+          role: "user",
+          content: finalContent,
+          image_url: base64Image || null
+        })
+      });
+    } catch (err) {
+      console.error("DB Save Error:", err);
+    }
 
     // Send via WebSocket (JSON format)
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -356,7 +409,7 @@ export default function ChatApp() {
   const handleClearHistory = async () => {
     if (!confirm("Are you sure you want to clear all chats? This cannot be undone.")) return;
     try {
-      await axios.delete(`${API_BASE}/api/chat/history/tashfin_01`);
+      await axios.delete(`${API_BASE}/api/chat/history/${currentUser.uid}`);
       setMessages([]);
     } catch (err) {
       console.error("Failed to clear history", err);
@@ -388,35 +441,38 @@ export default function ChatApp() {
   
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-gray-100 font-sans">
-      <header className="flex justify-between items-center p-4 border-b border-gray-800 bg-gray-900/50 backdrop-blur-md sticky top-0 z-10">
-        <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
-          Aura Companion OS
-        </h1>
-
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30">
-            Lv. {relationship.level} | {relationship.title}
-          </span>
-          <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
-              style={{ width: `${relationship.progress}%` }}
-            />
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 border-b border-gray-800 bg-gray-900/50 backdrop-blur-md sticky top-0 z-10 gap-3 sm:gap-0">
+        
+        {/* Top Row for Mobile (Title + Level) */}
+        <div className="flex justify-between items-center w-full sm:w-auto">
+          <h1 className="text-lg sm:text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
+            Aura Companion OS
+          </h1>
+          <div className="flex items-center gap-2 sm:ml-4">
+            <span className="text-[10px] sm:text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 whitespace-nowrap">
+              Lv. {relationship.level} | {relationship.title}
+            </span>
+            <div className="w-16 sm:w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+                style={{ width: `${relationship.progress}%` }}
+              />
+            </div>
           </div>
         </div>
 
-          {/* MEDIA GALLERY BUTTON */}
+        {/* Bottom Row for Mobile (Scrollable Action Buttons) */}
+        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 no-scrollbar">
           <button 
             onClick={() => setShowMediaGallery(!showMediaGallery)} 
-            className="px-4 py-2 bg-pink-600/20 text-pink-400 rounded-lg text-sm font-medium hover:bg-pink-600/30 transition"
+            className="px-3 py-1.5 sm:px-4 sm:py-2 bg-pink-600/20 text-pink-400 rounded-lg text-xs sm:text-sm font-medium hover:bg-pink-600/30 transition whitespace-nowrap"
           >
             Gallery 🖼️
           </button>
 
-          {/* INCOGNITO TOGGLE BUTTON */}
           <button 
             onClick={() => setIsIncognito(!isIncognito)} 
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition flex items-center gap-1.5 sm:gap-2 whitespace-nowrap ${
               isIncognito 
                 ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.5)]" 
                 : "bg-gray-800/50 text-gray-400 hover:text-purple-400"
@@ -425,22 +481,29 @@ export default function ChatApp() {
             {isIncognito ? "👻 Incognito ON" : "👁️ Incognito OFF"}
           </button>
 
-          <button onClick={() => setShowClearConfirm(true)} className="px-4 py-2 bg-red-600/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-600/30 transition">
-              Clear Chat
+          <button onClick={() => setShowClearConfirm(true)} className="px-3 py-1.5 sm:px-4 sm:py-2 bg-red-600/20 text-red-400 rounded-lg text-xs sm:text-sm font-medium hover:bg-red-600/30 transition whitespace-nowrap">
+            Clear Chat
           </button>
 
           <button 
             onClick={() => setShowDashboard(!showDashboard)}
-            className="px-4 py-2 bg-indigo-600/20 text-indigo-400 rounded-lg hover:bg-indigo-600/30 transition-colors text-sm font-medium"
+            className="px-3 py-1.5 sm:px-4 sm:py-2 bg-indigo-600/20 text-indigo-400 rounded-lg hover:bg-indigo-600/30 transition-colors text-xs sm:text-sm font-medium whitespace-nowrap"
           >
             {showDashboard ? "Hide Analytics" : "View Analytics"}
           </button>
+
+          <button 
+            onClick={() => signOut(auth)} 
+            className="px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-800 text-gray-400 rounded-lg text-xs sm:text-sm font-medium hover:text-red-400 hover:bg-gray-800/80 transition whitespace-nowrap">
+            Log Out
+          </button>
+        </div>
       </header>
 
       {showDashboard && (
         <div className="px-4 pt-4">
-          <MoodDashboard />
-          <GoalTracker />
+          <MoodDashboard currentUser={currentUser}/>
+          <GoalTracker currentUser={currentUser} />
         </div>
       )}
 
@@ -630,7 +693,11 @@ export default function ChatApp() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto pb-20">
             {messages.filter(m => m.imageUrl || m.isVoiceNote).reverse().map((media, i) => (
               <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
-                {media.imageUrl && <img src={media.imageUrl} className="w-full h-40 object-cover rounded-lg" alt="Gallery" />}
+                {media.imageUrl && 
+                <img src={media.imageUrl} 
+                alt="Aura Selfie" 
+                className="w-full max-h-72 sm:max-h-80 object-cover rounded-2xl mt-2 shadow-md border border-gray-700/50" 
+                loading="lazy"/>}
                 {media.isVoiceNote && (
                   <audio controls className="w-full h-8" src={media.userAudioUrl || `data:audio/mp3;base64,${media.audioBase64}`} />
                 )}

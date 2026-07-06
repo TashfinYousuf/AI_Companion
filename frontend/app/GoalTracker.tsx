@@ -3,20 +3,21 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Target, CheckCircle2, Circle, Loader2, Rocket } from "lucide-react";
+import { User } from "@firebase/auth/web-extension";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type Task = { id: number; title: string; is_completed: boolean };
 type GoalType = { id: number; title: string; description: string; progress: number; tasks: Task[] };
 
-export default function GoalTracker() {
+export default function GoalTracker({ currentUser }: { currentUser: User }) {
   const [goals, setGoals] = useState<GoalType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchGoals = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/analytics/goals/tashfin_01`);
+        const res = await axios.get(`${API_URL}/api/analytics/goals/${currentUser.uid}`);
         setGoals(res.data);
       } catch (error) {
         console.error("Failed to fetch goals", error);

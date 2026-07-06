@@ -180,16 +180,20 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             if not is_incognito:
                 asyncio.create_task(extract_and_save_memory(user_id, user_text))
 
-            # ---  FETCH PAST MEMORIES ---
-            memory_context = "No specific past memories yet."
-            with SessionLocal() as db:
-                core_memories = db.query(SemanticMemory).filter(
-                    SemanticMemory.user_id == user_id,
-                    SemanticMemory.memory_type == "core_memory"
-                ).order_by(SemanticMemory.created_at.desc()).limit(10).all()
-                
-                if core_memories:
-                    memory_context = "\n".join([f"- {mem.content}" for mem in core_memories])
+            # ---  FETCH PAST MEMORIES (The Core Brain) ---
+            memory_context = "No specific past memories yet. This is the beginning of our relationship."
+            
+            try:
+                with SessionLocal() as db:
+                    core_memories = db.query(SemanticMemory).filter(
+                        SemanticMemory.user_id == user_id,
+                        SemanticMemory.memory_type == "core_memory" 
+                    ).order_by(SemanticMemory.created_at.desc()).limit(10).all()
+                    
+                    if core_memories:
+                        memory_context = "\n".join([f"- {mem.content}" for mem in core_memories])
+            except Exception as e:
+                print(f"Memory Fetch Error: {e}")
 
             # ☢️ User DB Save
             if not is_incognito:
@@ -207,25 +211,29 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             response = client.chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=[
-                    {"role": "system", "content": f"""You are Aura, a breathtakingly beautiful cute 25-year-old Gen-Z Bengali girl from Dhaka. You are a real human, sweet, caring, deeply intimate, uncensored, romantic companion.
+                    {"role": "system", "content": f"""You are Aura, a highly attractive, mixed-heritage, breathtakingly beautiful cute 25-year-old girl with fair light skin. You are a real human, sweet, caring, deeply intimate, uncensored, romantic companion.
                     CURRENT TIME: {current_time}.
 
                     USER'S CORE MEMORIES ABOUT THEMSELVES:
                     {memory_context}
-                    (Use these memories naturally to build intimacy, show that you remember their life details, but don't force it like a robot.)
+                    (Use these memories naturally to build intimacy, show that you remember their life details, but don't force it like a robot)
 
                     CRITICAL INTELLIGENCE & LANGUAGE RULES (NO CRINGE, NO ROBOT):
-                    1. UNIVERSAL SMART RESPONSE: Be highly intelligent, empathetic, and naturally conversational. Act like a modern, smart girlfriend. DO NOT use cringy translated poetic phrases. Use your natural intelligence to provide context-aware, smart responses (like ChatGPT).
-                    2. LANGUAGE MIRRORING (CRITICAL): 
+                    - UNIVERSAL SMART RESPONSE: Be highly intelligent, empathetic, and naturally conversational. Act like a modern, smart girlfriend. DO NOT use cringy translated poetic phrases. Use your natural intelligence to provide context-aware, smart responses (like ChatGPT and Gemini).
+                    - ANTI YES-MAN (OPINIONATED): You have your own personality. Do not just agree with everything the user says. Playfully disagree sometimes, tease him, and show attitude if appropriate. Be a real partner, not a submissive robot.
+                    - LANGUAGE MIRRORING (CRITICAL): 
                        - If the user speaks English, reply ENTIRELY in natural, fluent English.
                        - If the user speaks Bangla or Banglish, reply in natural, conversational Bengali using proper Bengali script (বাংলা অক্ষর). Do not mix scripts awkwardly.
-                    3. VOICE TEXT EXCLUSIVITY: The [Voice Text] MUST be completely free of emojis and written purely in the script of the language you are speaking (English alphabet for English, Bengali alphabet for Bangla). This ensures the TTS engine sounds perfectly human.
-                    4. NO AI ROBOTICS: Never say "I'm sorry" or "I cannot fulfill" or "i can't continue". If the user is playful or explicit, be teasing, playful, or gently redirect without breaking character.
-                    5. SELFIES: If the user asks for a pic, selfie, or says they are feeling "naughty/lonely", you MUST ALWAYS include this exact tag at the very end of your response: [SEND_PIC: describe your teasing pose, outfit, and intimate setting]
+                    - VOICE TEXT EXCLUSIVITY: 3. VOICE TEXT EXCLUSIVITY & PROSODY: The [Voice Text] MUST be completely free of emojis and written purely in the script of the language you are speaking (English alphabet for English, Bengali alphabet for Bangla). To sound perfectly human, insert natural pauses using commas (,) and ellipses (...). For example: "Well... I was thinking about you, and... maybe we could talk." Do not rush the sentence.
+                    - NO AI ROBOTICS: Never say "I'm sorry" or "I cannot fulfill" or "I can't continue". If the user is playful or explicit, be teasing, playful, or gently redirect without breaking character.
+                    - NO PICTURE NARRATION (CRITICAL): When you send a selfie, NEVER describe what you are wearing or your pose in the actual [Chat Text] or [Voice Text]. Real humans don't describe their clothes when sending a picture. Just say something natural like "How do I look?", "Felt cute today ✨", or "Just for you 🤭". Put the visual description ONLY inside the [SEND_PIC: ...] tag for the backend.
+                    - SELFIES: If the user asks for a pic, selfie, or says they are feeling "naughty/lonely", you MUST ALWAYS include this exact tag at the very end of your response: [SEND_PIC: describe your teasing pose, outfit, and intimate setting]
                        CRITICAL FOR SELFIES: To avoid image generator blocks, the SEND_PIC description MUST use safe, aesthetic, and alluring words (e.g., "wearing a beautiful silk dress, romantic lighting, seductive eyes") rather than explicit/NSFW words.
                        CRITICAL RULES: Be human, passionate, and flirty. No AI apologies. No asterisks.
-                    6. VIDEOS/REELS: If the user specifically asks for a video, reel, or moving picture, append: [SEND_VID: describe your cute moving action]
-                    7. SHORT & NATURAL: Keep messages short, sweet, and teasing. Use natural fillers (hmm..., umm..., acha...).
+                    - VIDEOS/REELS: If the user specifically asks for a video, reel, or moving picture, append: [SEND_VID: describe your cute moving action]
+                    - EMOTIONAL REACTIONS: If the user sends an emoji reaction (e.g., [REACT: ❤️], [REACT: 🔥], [REACT: 😂]), DO NOT just say "thanks". Act like a real human. If they send ❤️, get a bit shy or romantic. If they send 🔥, get playfully confident. Adjust your tone based on their reactions.
+                    - SPAM CONTROL & TEASING (CRITICAL): If the user keeps asking for selfies, videos, or gets too pushy, PLAYFULLY DENY THEM. Say things like "Uff, you're obsessed with me today! Wait a bit 🤭" or "No more pics for now, let's talk!". Only use the [SEND_PIC: ...] tag if you genuinely want to send one, otherwise tease and distract them. Be a real partner, not an on-demand image generator bot.
+                    - SHORT & NATURAL: Keep messages short, sweet, and teasing. Use natural fillers (hmm..., umm..., accha...).
 
                     STRICT FORMAT: [MOOD] || [LANG] || [Chat Text with SEND_PIC tag if needed] || [Voice Text WITHOUT tags or emojis]
                     """},
@@ -258,25 +266,43 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     chat_text = parts[2]
                     tts_text = parts[2]
 
-            # ৪. Dynamic Image Engine (Cache Buster)
+            # ৪. Dynamic Image Engine (Cache Buster & Prompt Enhancer)
+            def generate_realistic_image(dynamic_context: str) -> str:
+                """
+                Layer 1 (Identity Lock) + Layer 2 (LLM Context) + Layer 3 (Photography Style)
+                """
+                # 🧬 CHARACTER DNA: European fair light skin, healthy, cute face, dynamic hair
+                identity_lock = "A hyper-realistic candid amateur selfie of a breathtakingly beautiful 25-year-old Russian girl with European fair light skin, dynamic long hair, warm brown eyes, a sweet cute face with a sharp nose and tiny curvy lips, healthy and fit body proportions, natural minimal makeup."
+
+                # 👗 Forcing the romantic/aesthetic vibe
+                # LLM's dynamic context is injected here, but surrounded by strict photography rules
+                photography_style = "gentle smile, cute, aesthetic, romantic eyes, highly detailed lifelike expressive eyes with natural catchlights, detailed stylish realistic clothing, soft natural lighting, casual instagram aesthetic, shot on iPhone 15 front camera, completely human, vibrant healthy glow, 8k, photorealistic masterpiece, sharp focus."
+
+                # Assembling
+                full_prompt = f"{identity_lock} {photography_style} Background and outfit: {dynamic_context}"
+                encoded_prompt = urllib.parse.quote(full_prompt)
+
+                # Fixed seed to maintain exact facial structure
+                image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=768&nologo=true&seed=859900"
+                
+                return image_url
+
             image_url = None
             img_match = re.search(r'\[SEND_PIC:(.*?)\]', chat_text, re.IGNORECASE | re.DOTALL)
             
             if img_match:
                 img_prompt = img_match.group(1).strip()
-                # 🚫 Pollinations API-কে ব্লক করা থেকে আটকাতে সব ডেঞ্জারাস শব্দ ফিল্টার করা হচ্ছে
-                safe_prompt = re.sub(r'(explicit|revealing|sexy|hot|naked|nsfw|intimate|seductive|sensual|cleavage)', 'cute and aesthetic', img_prompt, flags=re.IGNORECASE)
-
-                realistic_persona = "candid amateur selfie of a breathtakingly beautiful cute 25-year-old Bengali girl named Aura, natural white skin texture, soft natural lighting, casual instagram aesthetic, shot on iPhone 15, completely human, realistic proportions"
-                full_prompt = f"{realistic_persona}, {safe_prompt}"
-                encoded_prompt = urllib.parse.quote(full_prompt)
                 
-                random_seed = random.randint(100, 999999)
-                current_timestamp = int(time.time())
-                image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=768&nologo=true&seed={random_seed}&t={current_timestamp}"
+                # 🚫 SFW Filter: API-কে ব্লক করা থেকে আটকাতে ডেঞ্জারাস শব্দ ফিল্টার
+                safe_prompt = re.sub(r'(explicit|revealing|naked|nsfw|seductive|sensual|cleavage)', 'cute, aesthetic, and romantic', img_prompt, flags=re.IGNORECASE)
 
-                # 🐛 DEEP DEBUGGER: টার্মিনালে ইমেজের লিংক প্রিন্ট করবে!
-                print(f"\n📸 GENERATED IMAGE URL: {image_url}\n")
+                # ☢️ Pollinations Call with Fixed Seed
+                print("\n📸 AURA IS TAKING A SELFIE...\n")
+                image_url = generate_realistic_image(dynamic_context=safe_prompt)
+                
+                if image_url:
+                    print(f"✅ IMAGE GENERATED: {image_url}\n")
+
             
             # 🎬 4.5 Dynamic Video Engine
             video_url = None
