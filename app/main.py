@@ -2,17 +2,19 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-import sqlite3
+import os
+import certifi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pymongo import MongoClient
+from pydantic import BaseModel
+from datetime import datetime, timezone
 
 from app.routers import chat, voice, analytics
 from app.database.session import engine, Base
 from app.database import models
-from app.database.models import SemanticMemory
-from pydantic import BaseModel
 
-# Create database tables
+# Create database tables (আপনার অন্যান্য লোকাল মেমোরি টেবিলগুলোর জন্য)
 try:
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created successfully!")
@@ -21,7 +23,7 @@ except Exception as e:
 
 app = FastAPI(title="Companion OS", version="1.0")
 
-# CORS Middleware (ফ্রন্টএন্ডকে ব্যাকএন্ডের সাথে কথা বলার পারমিশন দেয়)
+# CORS Middleware (ফ্রন্টএন্ডকে ব্যাকএন্ডের সাথে কথা বলার পারমিশন দেয়)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # প্রোডাকশনে ফ্রন্টএন্ডের ডোমেইন
@@ -40,18 +42,21 @@ async def root():
     return {"message": "Aura Companion OS is running perfectly. Safe space activated."}
 
 
-# 1. Auto-create permanent chat table
-def init_permanent_chat_db():
-    with sqlite3.connect("local.db") as conn:
-        conn.execute('''CREATE TABLE IF NOT EXISTS permanent_chats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            role TEXT,
-            content TEXT,
-            image_url TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''')
-init_permanent_chat_db()
+# ==========================================
+# ☁️ MONGODB CLOUD DATABASE CONNECTION
+# ==========================================
+MONGO_URI = os.getenv("MONGO_URI")
+
+try:
+    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
+    db = client["aura_os_db"] # ডাটাবেসের নাম
+    chats_collection = db["permanent_chats"] # টেবিল বা কালেকশনের নাম
+    
+    # কানেকশন ঠিক আছে কি না টেস্ট করা
+    client.admin.command('ping')
+    print("✅ Successfully connected to MongoDB Cloud!")
+except Exception as e:
+    print(f"❌ MongoDB Connection Error: {e}")
 
 # 2. Schema for receiving chat data
 class SaveMessage(BaseModel):
@@ -60,20 +65,31 @@ class SaveMessage(BaseModel):
     content: str
     image_url: str | None = None
 
-# 3. API to SAVE message from any device
+# 3. API to SAVE message from any device (Now saves to Cloud)
 @app.post("/api/chat/save")
 def save_chat_message(msg: SaveMessage):
-    with sqlite3.connect("local.db") as conn:
-        conn.execute("INSERT INTO permanent_chats (user_id, role, content, image_url) VALUES (?, ?, ?, ?)",
-                     (msg.user_id, msg.role, msg.content, msg.image_url))
-    return {"status": "saved"}
+    chat_data = {
+        "user_id": msg.user_id,
+        "role": msg.role,
+        "content": msg.content,
+        "image_url": msg.image_url,
+        "timestamp": datetime.now(timezone.utc)
+    }
+    chats_collection.insert_one(chat_data)
+    return {"status": "saved to cloud"}
 
-# 4. API to FETCH history from any device
+# 4. API to FETCH history from any device (Now fetches from Cloud)
 @app.get("/api/chat/history/{user_id}")
 def get_permanent_history(user_id: str):
-    with sqlite3.connect("local.db") as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT role, content, image_url FROM permanent_chats WHERE user_id = ? ORDER BY id ASC", (user_id,))
-        rows = cursor.fetchall()
-        return [{"role": r["role"], "content": r["content"], "imageUrl": r["image_url"]} for r in rows]
+    # MongoDB থেকে ইউজারের মেসেজগুলো সময় অনুযায়ী (timestamp, 1) সাজিয়ে আনা হচ্ছে
+    chats = chats_collection.find({"user_id": user_id}).sort("timestamp", 1)
+    
+    history = []
+    for chat in chats:
+        history.append({
+            "role": chat["role"],
+            "content": chat["content"],
+            "imageUrl": chat.get("image_url")
+        })
+        
+    return history

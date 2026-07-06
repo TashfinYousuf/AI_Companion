@@ -11,3 +11,5 @@ edge-tts
 websockets
 python-multipart
 fastembed
+pymongo
+certifi
