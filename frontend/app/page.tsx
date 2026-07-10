@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { auth, googleProvider, facebookProvider } from "./firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signInWithPopup, sendPasswordResetEmail, User } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, setPersistence, signInWithPopup, browserLocalPersistence, sendPasswordResetEmail, User } from "firebase/auth";
 
 const ChatApp = dynamic(() => import("./ChatApp"), { ssr: false });
 
@@ -25,13 +25,22 @@ export default function Page({ currentUser }: { currentUser: User }) {
     setIsMounted(true);
   }, []);
 
-  // ২. Firebase Auth Auto-Restore (সেশন চেক করা হচ্ছে)
+ // ২. Firebase Auth Auto-Restore
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoadingAuth(false);
-    });
-    return () => unsubscribe(); // Cleanup listener
+    // ☢️ ফায়ারবেসকে সেশন ব্রাউজারে ফিক্সড রাখতে
+    setPersistence(auth, browserLocalPersistence)
+      .then(() => {
+        // এরপর Auth State চেক
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          setLoadingAuth(false);
+        });
+        return () => unsubscribe(); // Cleanup listener
+      })
+      .catch((error) => {
+        console.error("Auth Persistence Error:", error);
+        setLoadingAuth(false); // এরর হলেও যেন লোডিং স্ক্রিনে আটকে না থাকে
+      });
   }, []);
 
   // ৩. Login / Signup Handler

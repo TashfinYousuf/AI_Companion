@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from groq import Groq
 from typing import List
 from fastapi import BackgroundTasks
+from duckduckgo_search import DDGS
 
 from app.services.planner_service import generate_goal_tree
 from app.database.session import get_db
@@ -18,6 +19,7 @@ from app.services.style_engine import apply_human_style
 from app.services.proactive_service import generate_proactive_ping
 from app.routers.voice import manager
 from app.database.session import SessionLocal
+from app.database.vector_db import save_to_memory, search_memory
 
 # --- SQLAlchemy Imports ---
 from sqlalchemy import or_
@@ -43,7 +45,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     detected_mood: str
-    internal_thought: dict  # Aura-এর ভেতরের চিন্তা 프ন্টএন্ডে পাঠানোর জন্য
+    internal_thought: dict  # Aura-এর ভেতরের চিন্তা frontend পাঠানোর জন্য
 
 @router.post("/", response_model=ChatResponse)
 async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):  
@@ -54,7 +56,7 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
             
         client = Groq(api_key=groq_key)
 
-        # --- PHASE 5: THE EPISODIC CALLBACK ENGINE ---
+        # --- THE EPISODIC CALLBACK ENGINE ---
         # ইউজারের বর্তমান মেসেজের কোনো শব্দের সাথে পুরনো কোনো গল্পের মিল আছে কি না তা খোঁজা হচ্ছে
         keywords = payload.message.split()
         relevant_episode = None
@@ -81,15 +83,42 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
             aura_state = AuraInternalState(user_id=payload.user_id)
             db.add(aura_state)
             db.commit()
+        
+       # Pinecone মেমোরি ইনজেকশন
+        past_memories = search_memory(payload.user_id, payload.message, top_k=3)
+        memory_context = ""
+        if past_memories:
+            memory_context = "\n[Aura's Memory]: Here are some things you know about the user:\n"
+            for mem in past_memories:
+                memory_context += f"- {mem}\n"
 
-        # ==========================================
+        # 🌐 LIVE WEB SEARCH - NATIVE & FAST
+        web_context = ""
+        search_keywords = ["search", "latest", "news", "today", "update", "current", "price", "bitcoin"]
+        
+        if any(keyword in payload.message.lower() for keyword in search_keywords):
+            try:
+                # Langchain-এর বদলে সরাসরি DDGS ব্যবহার করা হলো
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(payload.message, max_results=3))
+                    
+                web_context = f"\n[CRITICAL REAL-TIME DATA]: Use exactly this fetched data to answer:\n{results}\n"
+                print(f"🌍 Web Search successful: Fetched {len(results)} results")
+            except Exception as e:
+                print(f"Web Search Error: {e}")
+
+        # =============================================
         # STEP 1: INTENT & EMOTION (The Subconscious)
-        # ==========================================
-        thought_prompt = f"""You are the internal subconscious of Aura.
+        # =============================================
+        thought_prompt = f"""You are the internal subconscious of Aura. You have FULL ACCESS to the real-time internet data provided below. 
+        NEVER say you cannot access live data or check websites. Just give the answer using the data provided.
+
         Analyze user input: "{payload.message}"
         Past Context: {past_context}
         {episode_context}
-        
+        {memory_context}
+        {web_context}
+
         Output perfectly valid JSON:
         {{
             "primary_emotion": "One word",
@@ -235,6 +264,10 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
         )
         db.add(new_emotion_log)
         db.commit()
+
+        # ব্যাকগ্রাউন্ডে নতুন কথাগুলো Pinecone-এ সেভ করা
+        if payload.message:
+            background_tasks.add_task(save_to_memory, payload.user_id, payload.message)
         
         return ChatResponse(
             reply=final_human_reply, 
@@ -266,7 +299,7 @@ async def get_chat_history(user_id: str, db: Session = Depends(get_db)):
             content_str = str(mem.content)
             
             try:
-                # ☢️ ROOT CAUSE FIX: সঠিক ইনডেন্টেশনে JSON পার্সিং
+                # ☢️ সঠিক ইনডেন্টেশনে JSON পার্সিং
                 msg_data = json.loads(content_str)
                 
                 formatted_msg = {
@@ -280,6 +313,7 @@ async def get_chat_history(user_id: str, db: Session = Depends(get_db)):
                 history.append(formatted_msg)
                 
             except json.JSONDecodeError:
+
                 # ☢️ LEGACY FALLBACK: যদি পুরনো স্ট্রিং মেসেজ থাকে
                 image_url = None
                 img_match = re.search(r'\[IMAGE=(https?://[^\]]+)\]', content_str)
