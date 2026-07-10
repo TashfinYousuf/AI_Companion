@@ -13,4 +13,5 @@ python-multipart
 fastembed
 pymongo
 certifi
-pinecone
+duckduckgo-search
+requests
