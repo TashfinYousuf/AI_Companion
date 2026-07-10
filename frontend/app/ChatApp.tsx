@@ -284,55 +284,26 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
   // ===========================================================
   // ৮. টেক্সট ও ইমেজ সেন্ড (Old API Removed, Now fully WebSocket)
   // ===========================================================
-  const handleTextSend = async (e?: React.FormEvent) => {
+ const handleTextSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() && !selectedImage) return;
+    if (!input.trim()) return;
 
-    let base64Image = null;
-    if (selectedImage) {
-      base64Image = await convertToBase64(selectedImage);
-    }
-
-    const userMsg = input.trim() ? input.trim() : "📸 Sent an image";
-    
-    const finalContent = replyingToMsg ? `[Replying to: "${replyingToMsg}"] ${userMsg}` : userMsg;
-
-    // UI Update
+    const userText = input.trim();
     setInput("");
-    setSelectedImage(null);
-    setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content: userMsg }]);
-    setReplyingToMsg(null); // রিপ্লাই সেন্ড হলে ক্লিয়ার করে দেওয়া
     setIsLoading(true);
 
-    // 💾 Save User Message to Permanent DB (NEW)
-    try {
-      await fetch(`${API_BASE}/api/chat/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: currentUser.uid,
-          role: "user",
-          content: finalContent,
-          image_url: base64Image || null
-        })
-      });
-    } catch (err) {
-      console.error("DB Save Error:", err);
-    }
+    const uniqueUserId = Date.now().toString() + "-user";
+    setMessages((prev) => [...prev, { id: uniqueUserId, role: "user", content: userText }]);
 
-    // Send via WebSocket (JSON format)
+    // 🛑 Database save backend (WebSocket) নিজেই করে নেবে, তাই এখানকার fetch('/save') মুছে দেওয়া হলো
+
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      lastInputMode.current = 'text';
-      lastInputMode.current = 'voice';
+      // 💡 "incognito: isIncognito" পাঠানোটা বাধ্যতামূলক, নাহলে ব্যাকএন্ড কনফিউজড হয়
       ws.current.send(JSON.stringify({ 
         type: "text", 
-        content: finalContent,
-        image_base64: base64Image, // ভবিষ্যতে মাল্টিমোডাল ভিশনের জন্য রেডি রাখা হলো
+        content: userText,
         incognito: isIncognito
       }));
-    } else {
-      console.error("WebSocket disconnected!");
-      setIsLoading(false);
     }
   };
 
@@ -551,6 +522,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
                   <img 
                     src={msg.imageUrl} 
                     alt="AI Selfie" 
+                    referrerPolicy="no-referrer" // 👈 এটা ব্রাউজারকে ছবি ব্লক করা থেকে আটকায়
                     className="w-full h-auto object-cover" 
                     onError={(e) => (e.target as HTMLImageElement).parentElement!.style.display = 'none'} 
                   />

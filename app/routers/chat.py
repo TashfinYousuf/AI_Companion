@@ -286,10 +286,14 @@ class HistoryResponse(BaseModel):
 @router.get("/history/{user_id}")
 async def get_chat_history(user_id: str, db: Session = Depends(get_db)):
     try:
+        # 🐛 desc() দিয়ে সর্বশেষ ১০০টি মেসেজ আনবে, এরপর [::-1] দিয়ে সেটাকে সোজা (পুরনো থেকে নতুন) করে দেবে
         memories = db.query(SemanticMemory).filter(
             SemanticMemory.user_id == user_id,
             SemanticMemory.memory_type == "conversation"
-        ).order_by(SemanticMemory.created_at.asc()).limit(50).all()
+        ).order_by(SemanticMemory.created_at.desc()).limit(100).all()
+        
+        # মেসেজগুলো উল্টো আসছিল, রিভার্স করে সোজা করা হলো
+        memories = memories[::-1]
 
         history = []
         for mem in memories:
@@ -308,7 +312,7 @@ async def get_chat_history(user_id: str, db: Session = Depends(get_db)):
                     "content": msg_data.get("content", ""),
                     "audioBase64": msg_data.get("audio_base64"),
                     "isVoiceNote": msg_data.get("is_voice_note", False),
-                    "imageUrl": msg_data.get("image_url")
+                    "imageUrl": msg_data.get("image_url") # 👈 ইমেজের লিংক পারফেক্টলি লোড হবে
                 }
                 history.append(formatted_msg)
                 

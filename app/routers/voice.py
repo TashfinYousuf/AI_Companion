@@ -6,6 +6,7 @@ import tempfile
 import os
 import time
 import random
+import requests
 import uuid
 import edge_tts
 import asyncio
@@ -280,12 +281,74 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
                 # Assembling
                 full_prompt = f"{identity_lock} {photography_style} Background and outfit: {dynamic_context}"
-                encoded_prompt = urllib.parse.quote(full_prompt)
+                final_img_url = None
 
-                # Fixed seed to maintain exact facial structure
-                image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=768&nologo=true&seed=859900"
+                print("\n🔄 [IMAGE ENGINE] Requesting Pollinations (FLUX Model)...")
                 
-                return image_url
+                # =================================================
+                # 🥇 TIER 1: Fal.ai (Primary - The King of FLUX)
+                # =================================================
+                try:
+                    print("\n🔄 [IMAGE ENGINE] Requesting Tier 1 API: Fal.ai...")
+                    fal_url = "https://fal.run/fal-ai/flux/schnell"
+                    fal_headers = {
+                        "Authorization": f"Key {os.getenv('FAL_API_KEY')}",
+                        "Content-Type": "application/json"
+                    }
+                    fal_payload = {
+                        "prompt": full_prompt,
+                        "image_size": "portrait_3_4", # Perfect selfie size
+                        "num_inference_steps": 4,     # Ultra-fast generation
+                        "enable_safety_checker": False
+                    }
+                    
+                    # ⏱️ 10 Second Timeout
+                    res = requests.post(fal_url, headers=fal_headers, json=fal_payload, timeout=10).json()
+                    
+                    if "images" in res and len(res["images"]) > 0:
+                        final_img_url = res["images"][0]["url"]
+                        print("✅ [IMAGE ENGINE] Fal.ai Generation Successful!")
+                    else:
+                        print(f"⚠️ [IMAGE ENGINE] Fal.ai Rejected. Reason: {res}")
+                except Exception as e:
+                    print(f"⚠️ [IMAGE ENGINE] Fal.ai Crash/Timeout: {e}")
+
+                # ================================================
+                # 🥈 TIER 2: Hugging Face (With Fallback Warning)
+                # ================================================
+                if not final_img_url:
+                    try:
+                        print("🔄 [IMAGE ENGINE] Switching to Tier 2 API: Hugging Face...")
+                        hf_url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+                        hf_headers = {"Authorization": f"Bearer {os.getenv('HF_API_KEY')}"}
+                        hf_payload = {"inputs": full_prompt}
+                        
+                        hf_res = requests.post(hf_url, headers=hf_headers, json=hf_payload, timeout=8)
+                        if hf_res.status_code == 200:
+                            img_b64 = base64.b64encode(hf_res.content).decode("utf-8")
+                            final_img_url = f"data:image/jpeg;base64,{img_b64}"
+                            print("✅ [IMAGE ENGINE] Hugging Face Generation Successful!")
+                        else:
+                            print(f"⚠️ [IMAGE ENGINE] Hugging Face Rejected. Status: {hf_res.status_code}, Error: {hf_res.text}")
+                    except Exception as e:
+                        print(f"⚠️ [IMAGE ENGINE] Hugging Face Network/DNS Error (Check your ISP/VPN). Skipping...")
+
+                # =================================================
+                # 🥉 TIER 3: Pollinations (The Unbreakable Hero)
+                # =================================================
+                if not final_img_url:
+                    print("🔄 [IMAGE ENGINE] Switching to Tier 3: Pollinations (Guaranteed)...")
+                    clean_context = re.sub(r'[^a-zA-Z0-9\s,]', '', dynamic_context).strip()
+                    short_prompt = f"Breathtaking 25yo Russian girl, hyper-realistic selfie, {clean_context}"[:200]
+                    
+                    # ☢️ Cache Busting: যাতে পুরনো ছবি না আসে, তাই র‍্যান্ডম সিড বসানো হলো
+                    random_seed = random.randint(1, 999999)
+                    safe_prompt = urllib.parse.quote(short_prompt)
+                    final_img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=512&height=768&nologo=true&seed={random_seed}"
+                    print("✅ [IMAGE ENGINE] Pollinations URL Generated Successfully!")
+                
+                return final_img_url
+            
 
             image_url = None
             img_match = re.search(r'\[SEND_PIC:(.*?)\]', chat_text, re.IGNORECASE | re.DOTALL)
