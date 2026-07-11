@@ -13,8 +13,6 @@ import requests
 import uuid
 import edge_tts
 import asyncio
-import io
-import torch
 
 from ddgs import DDGS
 from datetime import datetime
@@ -26,7 +24,6 @@ from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from typing import Dict
-from diffusers import AutoPipelineForText2Image
 from fastapi.staticfiles import StaticFiles
 
 # ডাটাবেস ও মডেল ইম্পোর্ট
