@@ -467,36 +467,40 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 # যদি ইউজার অথবা LLM যে কেউ আনসেন্সর্ড শব্দ লেখে, সাথে সাথে লোকাল ইঞ্জিন স্টার্ট হবে
                 is_uncensored_request = any(word in user_text.lower() for word in uncensored_keywords) or any(word in dynamic_context.lower() for word in uncensored_keywords)
 
-                # ===================================================
-                # 🥇 TIER 1: LOCAL CPU ENGINE (Uncensored / Private)
-                # ===================================================
-                # 🛡️ THE RENDER CRASH PROTECTOR: শুধুমাত্র ম্যাকবুকে রান করলেই এই ইঞ্জিন স্টার্ট হবে
+                # =================================================
+                # 🥇 TIER 1: LOCAL CPU ENGINE (Uncensored / Private) - ONLY ON MAC
+                # =================================================
                 if is_uncensored_request and IS_LOCAL_DEV:
                     try:
                         print("🖥️ [IMAGE ENGINE] Uncensored request detected! Routing to LOCAL CPU Pipeline...")
                         pipe = get_local_pipeline() 
-                        
-                        # ☢️ FORCE LOCAL MODEL: LLM ট্যাগ যাই দিক, আমরা ইউজারের অরিজিনাল প্রম্পটকে লোকাল মডেলে পুশ করে দিচ্ছি
                         local_prompt = f"candid full body photograph, {identity_lock}, {user_text}, {dynamic_context}"
                         
-                        image = pipe(
-                            prompt=local_prompt, 
-                            num_inference_steps=4, # SDXL-Lightning 4-step
-                            guidance_scale=1.0,
-                            height=512,
-                            width=512
-                        ).images[0]
-                        
+                        image = pipe(prompt=local_prompt, num_inference_steps=4, guidance_scale=1.0, height=512, width=512).images[0]
                         file_name = f"selfie_{uuid.uuid4()}.jpg"
                         file_path = os.path.join(STATIC_DIR, file_name)
                         image.save(file_path, format="JPEG", quality=95)
                         
                         final_img_url = f"/static/selfies/{file_name}"
-                        print(f"✅ [IMAGE ENGINE] Local Uncensored Image Secured & Saved: {final_img_url}")
                         return final_img_url
-
                     except Exception as e:
-                        print(f"⚠️ [IMAGE ENGINE] Local pipeline failed, falling back to cloud: {e}")
+                        print(f"⚠️ [IMAGE ENGINE] Local pipeline failed: {e}")
+
+                # =================================================
+                # ☁️ CLOUD ROUTING (Render / Live Server)
+                # =================================================
+                
+                # 💥 THE POLLINATIONS NSFW BYPASS (লাইভ সার্ভারে আনসেন্সর্ড চাইলে ডিরেক্ট এখানে আসবে)
+                if is_uncensored_request and not IS_LOCAL_DEV:
+                    print("☁️ [IMAGE ENGINE] Live Server Uncensored Request! Routing directly to Pollinations NSFW mode...")
+                    clean_context = re.sub(r'[^a-zA-Z0-9\s,]', '', dynamic_context).strip()
+                    short_prompt = f"A breathtaking 25yo Russian girl, hyper-realistic candid selfie, highly intimate, {clean_context}"[:200]
+                    random_seed = random.randint(1, 999999)
+                    safe_prompt = urllib.parse.quote(short_prompt)
+                    
+                    # &nologo=true &enhance=false দিয়ে ফিল্টার বাইপাস করা হলো
+                    final_img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=512&height=768&nologo=true&seed={random_seed}&enhance=false"
+                    return final_img_url
                         
                 # =================================================
                 # 🥇 TIER 1: Fal.ai (Primary - The King of FLUX)
@@ -589,19 +593,28 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     print(f"✅ IMAGE GENERATED: {image_url}\n")
 
             
-            # 🎬 4.5 Dynamic Video Engine
+            # 🎬 4.5 Dynamic Free Video Engine
             video_url = None
             vid_match = re.search(r'\[SEND_VID:(.*?)\]', chat_text, re.IGNORECASE | re.DOTALL)
             
             if vid_match:
-                # ভিডিও ট্যাগ চ্যাট থেকে মুছে ফেলা হচ্ছে
+                vid_prompt = vid_match.group(1).strip()
                 chat_text = re.sub(r'\[SEND_VID:.*?\]', '', chat_text, flags=re.IGNORECASE | re.DOTALL).strip()
                 tts_text = re.sub(r'\[SEND_VID:.*?\]', '', tts_text, flags=re.IGNORECASE | re.DOTALL).strip()
                 
-                # আপাতত ফ্রন্টএন্ড UI টেস্ট করার জন্য একটি ডামি Aesthetic MP4 ভিডিও লিংক দেওয়া হলো
-                # (ভবিষ্যতে এখানে Kling AI বা Luma API-এর রিকোয়েস্ট বসবে)
-                video_url = "https://cdn.pixabay.com/video/2020/05/25/40143-424844342_tiny.mp4"
-                print(f"🎬 VIDEO TRIGGERED: {video_url}")
+                print(f"\n🎬 [VIDEO ENGINE] Fetching Free Aesthetic Video for: {vid_prompt}")
+                
+                # ডাইনামিক রিয়েলিস্টিক ভিডিও কালেকশন
+                casual_vids = ["https://cdn.pixabay.com/video/2020/05/25/40143-424844342_tiny.mp4", "https://cdn.pixabay.com/video/2021/08/18/85433-590289053_tiny.mp4"]
+                sensual_vids = ["https://cdn.pixabay.com/video/2019/01/17/20755-312211913_tiny.mp4", "https://cdn.pixabay.com/video/2023/10/22/186001-876801932_tiny.mp4"]
+                
+                # প্রম্পট অনুযায়ী ভিডিও সিলেক্ট করবে
+                if any(word in vid_prompt.lower() for word in ["kiss", "bed", "romantic", "intimate", "touch"]):
+                    video_url = random.choice(sensual_vids)
+                else:
+                    video_url = random.choice(casual_vids)
+                    
+                print(f"✅ VIDEO TRIGGERED: {video_url}")
 
         
             # ৫. Text & Voice Cleanup
