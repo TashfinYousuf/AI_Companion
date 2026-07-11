@@ -451,6 +451,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 """
                 Layer 1 (Identity Lock) + Layer 2 (LLM Context) + Layer 3 (Photography Style)
                 """
+
+                final_img_url = None
+                
                 # 🧬 CHARACTER DNA: European fair light skin, healthy, cute face, dynamic hair
                 identity_lock = "A hyper-realistic candid selfie of a breathtakingly beautiful 25-year-old Russian girl with European fair light skin, dynamic long hair, warm brown eyes, a sweet cute face with a sharp nose and tiny curvy lips, healthy and fit body proportions, natural minimal makeup."
 
@@ -468,7 +471,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 is_uncensored_request = any(word in user_text.lower() for word in uncensored_keywords) or any(word in dynamic_context.lower() for word in uncensored_keywords)
 
                 # =================================================
-                # 🥇 TIER 1: LOCAL CPU ENGINE (Uncensored / Private) - ONLY ON MAC
+                # 🥇 TIER 1: LOCAL CPU ENGINE (ONLY ON MAC)
                 # =================================================
                 if is_uncensored_request and IS_LOCAL_DEV:
                     try:
@@ -487,82 +490,64 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                         print(f"⚠️ [IMAGE ENGINE] Local pipeline failed: {e}")
 
                 # =================================================
-                # ☁️ CLOUD ROUTING (Render / Live Server)
+                # 💥 TIER 1.5: THE POLLINATIONS NSFW BYPASS (LIVE SERVER)
                 # =================================================
-                
-                # 💥 THE POLLINATIONS NSFW BYPASS (লাইভ সার্ভারে আনসেন্সর্ড চাইলে ডিরেক্ট এখানে আসবে)
                 if is_uncensored_request and not IS_LOCAL_DEV:
                     print("☁️ [IMAGE ENGINE] Live Server Uncensored Request! Routing directly to Pollinations NSFW mode...")
                     clean_context = re.sub(r'[^a-zA-Z0-9\s,]', '', dynamic_context).strip()
                     short_prompt = f"A breathtaking 25yo Russian girl, hyper-realistic candid selfie, highly intimate, {clean_context}"[:200]
                     random_seed = random.randint(1, 999999)
                     safe_prompt = urllib.parse.quote(short_prompt)
-                    
                     # &nologo=true &enhance=false দিয়ে ফিল্টার বাইপাস করা হলো
                     final_img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=512&height=768&nologo=true&seed={random_seed}&enhance=false"
                     return final_img_url
-                        
+
                 # =================================================
-                # 🥇 TIER 1: Fal.ai (Primary - The King of FLUX)
+                # ☁️ SFW CLOUD ROUTING
                 # =================================================
+                cloud_safe_context = re.sub(r'(explicit|revealing|naked|nsfw|seductive|sensual|cleavage|bikini|boobs|lingerie|nude|bedroom)', 'cute, aesthetic, and romantic', dynamic_context, flags=re.IGNORECASE)
+                full_prompt = f"{identity_lock} {photography_style} Background and outfit: {cloud_safe_context}"
+
+                # 🥇 TIER 2: Fal.ai (Since balance is 0, this will fail safely now)
                 try:
                     print("\n🔄 [IMAGE ENGINE] Requesting Tier 1 API: Fal.ai...")
                     fal_url = "https://fal.run/fal-ai/flux/schnell"
-                    fal_headers = {
-                        "Authorization": f"Key {os.getenv('FAL_API_KEY')}",
-                        "Content-Type": "application/json"
-                    }
-                    fal_payload = {
-                        "prompt": full_prompt,
-                        "image_size": "portrait_3_4", # Perfect selfie size
-                        "num_inference_steps": 4,     # Ultra-fast generation
-                        "enable_safety_checker": False
-                    }
-                    
-                    # ⏱️ 10 Second Timeout
-                    res = requests.post(fal_url, headers=fal_headers, json=fal_payload, timeout=10).json()
+                    fal_headers = {"Authorization": f"Key {os.getenv('FAL_API_KEY')}", "Content-Type": "application/json"}
+                    fal_payload = {"prompt": full_prompt, "image_size": "portrait_3_4", "num_inference_steps": 4, "enable_safety_checker": False}
+                    res = requests.post(fal_url, headers=fal_headers, json=fal_payload, timeout=8).json()
                     
                     if "images" in res and len(res["images"]) > 0:
                         final_img_url = res["images"][0]["url"]
                         print("✅ [IMAGE ENGINE] Fal.ai Generation Successful!")
                     else:
-                        print(f"⚠️ [IMAGE ENGINE] Fal.ai Rejected. Reason: {res}")
+                        print(f"⚠️ [IMAGE ENGINE] Fal.ai Rejected (Out of Balance).")
                 except Exception as e:
                     print(f"⚠️ [IMAGE ENGINE] Fal.ai Crash/Timeout: {e}")
 
-                # ================================================
-                # 🥈 TIER 2: Hugging Face (With Fallback Warning)
-                # ================================================
+                # 🥈 TIER 3: Hugging Face
                 if not final_img_url:
                     try:
                         print("🔄 [IMAGE ENGINE] Switching to Tier 2 API: Hugging Face...")
                         hf_url = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
                         hf_headers = {"Authorization": f"Bearer {os.getenv('HF_API_KEY')}"}
                         hf_payload = {"inputs": full_prompt}
-                        
                         hf_res = requests.post(hf_url, headers=hf_headers, json=hf_payload, timeout=8)
                         if hf_res.status_code == 200:
                             img_b64 = base64.b64encode(hf_res.content).decode("utf-8")
                             final_img_url = f"data:image/jpeg;base64,{img_b64}"
                             print("✅ [IMAGE ENGINE] Hugging Face Generation Successful!")
                         else:
-                            print(f"⚠️ [IMAGE ENGINE] Hugging Face Rejected. Status: {hf_res.status_code}, Error: {hf_res.text}")
+                            print(f"⚠️ [IMAGE ENGINE] HF Rejected: {hf_res.text}")
                     except Exception as e:
-                        print(f"⚠️ [IMAGE ENGINE] Hugging Face Network/DNS Error (Check your ISP/VPN). Skipping...")
+                        print(f"⚠️ [IMAGE ENGINE] Hugging Face Failed: {e}")
 
-                # =================================================
-                # 🥉 TIER 3: Pollinations (The Unbreakable Hero)
-                # =================================================
+                # 🥉 TIER 4: Pollinations (GUARANTEED FALLBACK)
                 if not final_img_url:
                     print("🔄 [IMAGE ENGINE] Switching to Tier 3: Pollinations (Guaranteed)...")
-                    clean_context = re.sub(r'[^a-zA-Z0-9\s,]', '', dynamic_context).strip()
+                    clean_context = re.sub(r'[^a-zA-Z0-9\s,]', '', cloud_safe_context).strip()
                     short_prompt = f"A breathtaking 25yo Russian girl, hyper-realistic selfie, {clean_context}"[:200]
-                    
-                    # ☢️ Cache Busting: যাতে পুরনো ছবি না আসে, তাই র‍্যান্ডম সিড বসানো হলো
                     random_seed = random.randint(1, 999999)
                     safe_prompt = urllib.parse.quote(short_prompt)
-
-                    # ☢️ &model=flux বসিয়ে ডিরেক্ট FLUX মডেল কল করা হচ্ছে (১০০% ফ্রি, নো লিমিট)
                     final_img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=512&height=768&nologo=true&seed={random_seed}&model=flux"
                     print("✅ [IMAGE ENGINE] Pollinations URL Generated Successfully!")
                 
