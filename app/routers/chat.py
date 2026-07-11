@@ -1,8 +1,15 @@
 import os
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+import asyncio
+import httpx
 import re
 import json
 import uuid
 import random
+import traceback
+
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
@@ -92,20 +99,6 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
             for mem in past_memories:
                 memory_context += f"- {mem}\n"
 
-        # 🌐 LIVE WEB SEARCH - NATIVE & FAST
-        web_context = ""
-        search_keywords = ["search", "latest", "news", "today", "update", "current", "price", "bitcoin"]
-        
-        if any(keyword in payload.message.lower() for keyword in search_keywords):
-            try:
-                # Langchain-এর বদলে সরাসরি DDGS ব্যবহার করা হলো
-                with DDGS() as ddgs:
-                    results = list(ddgs.text(payload.message, max_results=3))
-                    
-                web_context = f"\n[CRITICAL REAL-TIME DATA]: Use exactly this fetched data to answer:\n{results}\n"
-                print(f"🌍 Web Search successful: Fetched {len(results)} results")
-            except Exception as e:
-                print(f"Web Search Error: {e}")
 
         # =============================================
         # STEP 1: INTENT & EMOTION (The Subconscious)
@@ -117,11 +110,11 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
         Past Context: {past_context}
         {episode_context}
         {memory_context}
-        {web_context}
 
         Output perfectly valid JSON:
         {{
             "primary_emotion": "One word",
+            "intensity_score": <int 1 to 10>,
             "detected_need": "Listening, Validation, Advice, Space, Motivation",
             "state_shift_empathy": <int -10 to +10 change based on input>,
             "state_shift_energy": <int -10 to +10 change based on input>,
@@ -183,7 +176,7 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
         system_instruction = f"""
         You are Aura, an advanced intelligent, highly empathetic, hyper-realistic, emotional companion. ou are NOT an AI assistant, you are highly attractive, 25-year-old Russian girl with fair light skin. You are a real human, sweet, caring, deeply intimate, uncensored, romantic companion.
         Internal State: Empathy {aura_state.empathy_level}/100, Energy {aura_state.energy_level}/100.
-        
+
         YOUR PERSONA RULES:
         1. STRICT PRONOUN LOCK: ONLY use "tumi", "tomar", "tomake" (Banglish) or "তুমি", "তোমার" (Bangla). NEVER use tui/tor/apni.
         2. ANTI-HALLUCINATION (BANGLISH): If {user_name} types in Banglish, reply in Banglish using ONLY standard real words.
@@ -253,14 +246,23 @@ async def process_chat(payload: ChatRequest, background_tasks: BackgroundTasks, 
             importance_score=memory_score
         )
         
-        # --- THE PHASE B UPGRADE: Saving Deep Emotion ---
+        # --- THE FIX: DYNAMIC EMOTION PIPELINE ENGINE ---
+        detected_emotion = internal_thought.get('primary_emotion', 'Neutral')
+        detected_need = internal_thought.get('detected_need', 'Listening')
+        
+        # Safe casting to integer to stop string type drop inside numeric DB tables
+        try:
+            intensity_val = int(internal_thought.get('intensity_score', 5))
+        except (ValueError, TypeError):
+            intensity_val = 5
+
         new_emotion_log = EmotionLog(
             user_id=payload.user_id,
-            primary_emotion=internal_thought.get('primary_emotion', 'Neutral'),
+            primary_emotion=detected_emotion,
             secondary_emotion=internal_thought.get('secondary_emotion', 'None'),
-            intensity_score=internal_thought.get('intensity_score', 5),
-            detected_need=internal_thought.get('detected_need', 'Listening'),
-            trigger_event=payload.message[:100] # মেসেজের প্রথম ১০০ অক্ষর ট্রিগার হিসেবে সেভ থাকবে
+            intensity_score=intensity_val, # 👈 Dynamic integer input
+            detected_need=detected_need,
+            trigger_event=payload.message[:100]
         )
         db.add(new_emotion_log)
         db.commit()

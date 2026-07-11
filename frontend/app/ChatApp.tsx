@@ -411,12 +411,12 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
   };
   
   return (
-    <div className="flex flex-col h-[100dvh] w-full bg-gray-950 overflow-hidden">
+    <div className="flex flex-col h-dvh w-full bg-gray-950 overflow-hidden">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 border-b border-gray-800 bg-gray-900/50 backdrop-blur-md sticky top-0 z-10 gap-3 sm:gap-0">
         
         {/* Top Row for Mobile (Title + Level) */}
         <div className="flex justify-between items-center w-full sm:w-auto">
-          <h1 className="text-lg sm:text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
+          <h1 className="text-lg sm:text-xl font-bold text-transparent bg-clip-text bg-linear-to-r from-indigo-400 to-purple-400">
             Aura Companion OS
           </h1>
           <div className="flex items-center gap-2 sm:ml-4">
@@ -425,7 +425,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
             </span>
             <div className="w-16 sm:w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+                className="h-full bg-linear-to-r from-indigo-500 to-purple-500 transition-all duration-500"
                 style={{ width: `${relationship.progress}%` }}
               />
             </div>
@@ -574,7 +574,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
                       <textarea 
                         value={input} 
                         onChange={(e) => setInput(e.target.value)}
-                        className="bg-gray-900 text-white p-3 rounded-lg w-full text-sm border border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none min-h-[60px]"
+                        className="bg-gray-900 text-white p-3 rounded-lg w-full text-sm border border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none min-h-15"
                       />
                       <div className="flex gap-2 justify-end">
                         <button 
@@ -658,7 +658,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
       {showMediaGallery && (
         <div className="absolute inset-0 bg-gray-950/95 z-40 flex flex-col p-6 animate-in fade-in slide-in-from-bottom-10">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-indigo-400">Media & Voice Notes</h2>
+            <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-linear-to-r from-pink-400 to-indigo-400">Media & Voice Notes</h2>
             <button onClick={() => setShowMediaGallery(false)} className="p-2 bg-gray-800 rounded-full text-white hover:bg-gray-700">❌</button>
           </div>
           
@@ -708,7 +708,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className={`p-3 rounded-full transition-all flex-shrink-0 ${
+            className={`p-3 rounded-full transition-all shrink-0 ${
               selectedImage 
                 ? "text-indigo-400 bg-indigo-500/20" 
                 : "text-gray-400 hover:text-indigo-400 hover:bg-gray-800"
@@ -721,7 +721,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
           <button
             type="button"
             onClick={toggleRecording}
-            className={`p-3 rounded-full transition-all duration-300 flex-shrink-0 ${
+            className={`p-3 rounded-full transition-all duration-300 shrink-0 ${
               isRecording ? "bg-red-500 text-white animate-pulse" : "bg-gray-800 text-gray-400 hover:text-indigo-400"
             }`}
           >
@@ -741,7 +741,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
             <button
               type="submit"
               disabled={(!input.trim() && !selectedImage) || isLoading}
-              className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-colors flex-shrink-0 shadow-md shadow-indigo-600/20"
+              className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-colors shrink-0 shadow-md shadow-indigo-600/20"
             >
               <Send className="w-5 h-5 ml-0.5" />
             </button>
@@ -753,7 +753,7 @@ export default function ChatApp({ currentUser }: { currentUser: User }) {
       {/* MESSENGER STYLE IMAGE ZOOM MODAL */}
       {viewingImage && (
         <div 
-          className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/95 z-9999 flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200"
           onClick={() => setViewingImage(null)} // বাইরে ক্লিক করলেই ক্লোজ হয়ে যাবে
         >
           <button 

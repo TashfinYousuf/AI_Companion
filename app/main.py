@@ -13,8 +13,9 @@ from datetime import datetime, timezone
 from app.routers import chat, voice, analytics
 from app.database.session import engine, Base
 from app.database import models
+from fastapi.staticfiles import StaticFiles
 
-# Create database tables (আপনার অন্যান্য লোকাল মেমোরি টেবিলগুলোর জন্য)
+# Create database tables (অন্যান্য লোকাল মেমোরি টেবিলগুলোর জন্য)
 try:
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created successfully!")
@@ -36,6 +37,9 @@ app.add_middleware(
 app.include_router(chat.router)
 app.include_router(voice.router, tags=["Voice"])
 app.include_router(analytics.router)
+
+os.makedirs("app/static/selfies", exist_ok=True)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/")
 async def root():
