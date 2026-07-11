@@ -14,7 +14,6 @@ import uuid
 import edge_tts
 import asyncio
 
-from ddgs import DDGS
 from datetime import datetime
 from typing import Dict
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
